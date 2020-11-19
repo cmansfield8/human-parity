@@ -34,6 +34,8 @@ class Trans:
 			self.begin = float(l[0])
 			self.end = float(l[1])
 			self.channel = l[2][:-1]
+			if self.channel == "B1":
+				self.channel = "B"
 			self.transcript = ' '.join(l[3:])
 		except IndexError as e:
 			raise("Corrupt line at file {}: {}".format(self.waveform, line))
@@ -42,7 +44,7 @@ class Trans:
 
 	def process_str(self, sent, datatype):
 		# contraction labels
-		CONT = re.compile(r"<contraction e_form=\"\[[^=]+=>[^\]]+\]\[[^=]+=>[^\]]+]\">")
+		CONT = re.compile(r"<contraction e_form=\"(\[[^=]+=>[^=]+\])+\">")
 		sent = CONT.sub(r"", sent)
 
 		# type-specific processing
@@ -79,6 +81,7 @@ class Trans:
 		HUHUH = re.compile(r"huh-uh")
 		sent =  self.sub_word(HUHUH, "uh-uh", sent)
 		sent = self.sub_word(re.compile(r"mhm"), "uh-huh", sent)
+		sent = self.sub_word(re.compile(r"um-hum"), "uh-huh", sent)
 
 		# empty sentences
 		sent = sent.lower()
@@ -104,6 +107,9 @@ class Trans:
 		return s
 
 	def normalize_swbd(self, sent):
+		GONNA = re.compile(r"gonna", flags=re.I)
+		GONNA2 = "going to"
+		sent = self.sub_word(GONNA, GONNA2, sent)
 		WANNA = re.compile(r"wanna", flags=re.I)
 		WANNA2 = "want to"
 		sent = self.sub_word(WANNA, WANNA2, sent)

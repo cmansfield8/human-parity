@@ -17,7 +17,8 @@ import argparse
 class Main:
 	UPDATES = {"'bout":"about",
 			   "'cause":"because",
-			   "hmm":"hm"}
+			   "hmm":"hm",
+			   "mhm":"uh-huh"}
 	REDUCED = {"gonna":("going", "to"), 
 			   "wanna":("want", "to"),
 			   "kinda":("kind", "of"),
