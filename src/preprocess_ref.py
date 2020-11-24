@@ -43,9 +43,21 @@ class Trans:
 		self.transcript = self.process_str(self.transcript, datatype)
 
 	def process_str(self, sent, datatype):
+
+		# special label for noise (will match alternative pronunciations)
+		NOISE = re.compile(r"{[^}]+}")
+		sent = NOISE.sub("", sent)
+
 		# contraction labels
-		CONT = re.compile(r"<contraction e_form=\"(\[[^=]+=>[^=]+\])+\">")
-		sent = CONT.sub(r"", sent)
+		if args.cont:
+			CONT1 = re.compile(r"<contraction e_form=\"\[[^=]+=>([^\]]+)\]\">(\S+)")
+			sent = CONT1.sub(r"{ \1 / \2 }", sent)
+
+			CONT2 = re.compile(r"<contraction e_form=\"\[[^=]+=>([^=]+)\]\[[^=]+=>([^=]+)\]\">(\S+)")
+			sent = CONT2.sub(r"{ \1 \2 / \3 }", sent)
+		else:
+			CONT = re.compile(r"<contraction e_form=\"(\[[^=]+=>[^=]+\])+\">")
+			sent = CONT.sub(r"", sent)
 
 		# type-specific processing
 		if datatype == "SWBD":
@@ -54,16 +66,16 @@ class Trans:
 			sent = self.normalize_en(sent) 
 
 		# various special labels
-		NOISE = re.compile(r"{[^}]+}")    # noise label
-		COMMENT = re.compile(r"\[[^\]]+\]+")  # comment and part of contraction
-		TAG = re.compile(r"<[^>]+>")  # aside, contraction markers
+		COMMENT = re.compile(r"\[[^\]]+\]+")  # comment (will match contractions)
+		TAG = re.compile(r"<[^>]+>")  # aside (will match contractions)
+		DDASH = re.compile(r"//")  # aside
 		INTERRUPT = re.compile(r"--") # interruption markers 
 
-		patterns = [NOISE, COMMENT, TAG, INTERRUPT]
+		patterns = [COMMENT, TAG, DDASH, INTERRUPT]
 		for p in patterns:
 			sent = p.sub("", sent)
 
-		# punctuation
+		# strip punctuation
 		punct_keep = {"-", "\'", "/", "{", "}"}
 		punct_remove = set(string.punctuation)
 		punct_remove.difference_update(punct_keep)
@@ -73,7 +85,7 @@ class Trans:
 		sent = re.sub(r"\s+", " ", sent) # remove double spaces
 
 		# fragments
-		INCOMPLETE = re.compile(r"(\S*-)")
+		INCOMPLETE = re.compile(r"(\S+-|-\S+)")
 		sent = self.sub_word(INCOMPLETE, r"{ \2 / @ }", sent) 
 
 		# hesitations
@@ -82,6 +94,11 @@ class Trans:
 		sent =  self.sub_word(HUHUH, "uh-uh", sent)
 		sent = self.sub_word(re.compile(r"mhm"), "uh-huh", sent)
 		sent = self.sub_word(re.compile(r"um-hum"), "uh-huh", sent)
+
+		# dashed words
+		if args.dash:
+			DASHED = re.compile(r"([^um|uh|\s])-(\S)")
+			sent = DASHED.sub(r"\1 \2", sent)
 
 		# empty sentences
 		sent = sent.lower()
@@ -157,5 +174,7 @@ if __name__=="__main__":
 	parser.add_argument("indir", type=str, help="Directory with the transcripts.")
 	parser.add_argument("outdir", type=str, help="Directory to save processed transcripts.")
 	parser.add_argument("datatype", type=str, help="Transcript type. Expecting one of: SWBD, CH")
+	parser.add_argument("--cont", action="store_true", help="Include all contraction forms.")
+	parser.add_argument("--dash", action="store_true", help="Seperate certain hyphenated words.")
 	args = parser.parse_args()
 	Main(args)

@@ -4,10 +4,11 @@ Thesis Chapter 6
 Preprocessing code for the MSFT transcriptions.
 
 Steps:
-	- maps reduced forms in UPDATES and REDUCED
+	- map reduced forms in UPDATES and REDUCED
 		- when extra tokens are created, the timestamp is the midpoint between original token_i and token_i+1
 	- lowercase tokens
-	- strips periods in abbreviations
+	- strip periods in abbreviations
+	- OPTIONALLY seperate hyphenated words that don't start with uh- or um-
 """
 
 import os
@@ -18,7 +19,8 @@ class Main:
 	UPDATES = {"'bout":"about",
 			   "'cause":"because",
 			   "hmm":"hm",
-			   "mhm":"uh-huh"}
+			   "mhm":"uh-huh",
+			   "till":"until"}
 	REDUCED = {"gonna":("going", "to"), 
 			   "wanna":("want", "to"),
 			   "kinda":("kind", "of"),
@@ -35,18 +37,33 @@ class Main:
 				for i in range(len(lines)):
 					current = lines[i].split()
 					if len(current) > 4:
-						token = current[4].lower()
-						if token in self.REDUCED:
-							temp1, temp2 = self.get_extension(current, 
+						current[4] = current[4].lower()
+						token = current[4]
+
+						# handle hyphenation
+						if args.dash and "-" in token:
+							tokens = token.split("-")
+							if tokens[0] not in {"uh", "um"}:
+								temp = self.get_extension(current,
+															tokens,
+															self.endpoint(lines[i+1]))
+								processed.extend(temp)
+							else:
+								processed.append(current)
+
+						# reduced forms 1
+						elif token in self.REDUCED:
+							temp = self.get_extension(current, 
 														  	  self.REDUCED[token], 
 													 		  self.endpoint(lines[i+1]))
-							processed.extend([temp1, temp2])
+							processed.extend(temp)
+
+						# more reduced forms and abbreviation normalization
 						else:
 							if token in self.UPDATES:
-								token = self.UPDATES[token]
+								current[4] = self.UPDATES[token]
 							if token.endswith("."):
-								token = token.rstrip(".")
-							current[4] = token
+								current[4] = token.rstrip(".")
 							processed.append(current)
 
 				# write processed transcription to file
@@ -61,14 +78,22 @@ class Main:
 		return float(line.split()[2])
 
 	def get_extension(self, arr, tokens, end):
-		arr[4] = tokens[0]
-		start = float(arr[2])
-		mid = start + float(end - start) / 2
-		temp = arr.copy()
-		temp[2] = "{:.3f}".format(mid)
-		temp[4] = tokens[1]
-		return arr, temp
+		timepoint = float(arr[2])
+		step = float(end - timepoint) / float(len(tokens))
 
+		# edge case where current line ends conversation
+		if step < 0:
+			timepoint -= 0.004
+			step = 0.001
+		
+		result = list()
+		for t in tokens:
+			temp = arr.copy()
+			temp[2] = "{:.3f}".format(timepoint)
+			temp[4] = t
+			timepoint += step
+			result.append(temp)
+		return result 
 
 	def write_debug(self, file, num, line, status):
 		print("File {}, Line {}: {} {}".format(file, num, status, line))
@@ -78,5 +103,6 @@ if __name__=="__main__":
 	parser = argparse.ArgumentParser(description="Preprocess transcripts.")
 	parser.add_argument("indir", type=str, help="Directory with the transcripts in CTM format.")
 	parser.add_argument("outdir", type=str, help="Directory to save new files.")
+	parser.add_argument("--dash", action="store_true", help="Seperate certain hypenated words.")
 	args = parser.parse_args()
 	Main(args)
