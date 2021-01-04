@@ -1,7 +1,20 @@
 """
-Author: coman8
-Thesis Chapter 6
-Preprocessing code for the reference and hypothesis transcripts prior to SCLITE scoring.
+Author: coman8@uw.edu
+Thesis Study 3
+
+Preprocessing code for the NIST HUB5 reference transcripts prior to SCLITE scoring.
+
+The preprocessing closely follows the initial NIST HUB5 guidelines:
+https://mig.nist.gov/MIG_Website/tests/ctr/2000/h5_2000_v1.3.html
+
+- Removes 'comments' about noise, laughter
+- Removes formatting symbols and punctuation
+- Substitutes and groups certain hesitations
+- Expands reduced forms 'gonna' and 'wanna'
+- Remove hyphenation from words
+- Fragments have null alternative
+- Options to keep all contraction forms or only single-token forms
+
 """
 
 import os
@@ -66,8 +79,8 @@ class Trans:
 			sent = self.normalize_en(sent) 
 
 		# various special labels
-		COMMENT = re.compile(r"\[[^\]]+\]+")  # comment (will match contractions)
-		TAG = re.compile(r"<[^>]+>")  # aside (will match contractions)
+		COMMENT = re.compile(r"\[[^\]]+\]+")  # comment (warning: will match contractions)
+		TAG = re.compile(r"<[^>]+>")  # aside (warning: will match contractions)
 		DDASH = re.compile(r"//")  # aside
 		INTERRUPT = re.compile(r"--") # interruption markers 
 
@@ -90,15 +103,16 @@ class Trans:
 
 		# hesitations
 		sent = self.sub_hesitations(sent)
-		HUHUH = re.compile(r"huh-uh")
-		sent =  self.sub_word(HUHUH, "uh-uh", sent)
-		sent = self.sub_word(re.compile(r"mhm"), "uh-huh", sent)
-		sent = self.sub_word(re.compile(r"um-hum"), "uh-huh", sent)
+		UHHUH = "{ uh-huh / uh huh }"
+		# matches MSFT transcript conventions, otherwise WER is extremely high
+		sent = self.sub_word(re.compile(r"uh-huh"), UHHUH, sent)
+		sent = self.sub_word(re.compile(r"um-hum"), UHHUH, sent)
+		# according to NIST guidelines, other variants are absent in MSFT transcript
+		sent = self.sub_word(re.compile(r"mhm"), UHHUH, sent)
 
 		# dashed words
-		if args.dash:
-			DASHED = re.compile(r"([^um|uh|\s])-(\S)")
-			sent = DASHED.sub(r"\1 \2", sent)
+		DASHED = re.compile(r"([^uh|\s])-(\S)")  
+		sent = DASHED.sub(r"\1 \2", sent)
 
 		# empty sentences
 		sent = sent.lower()
@@ -171,10 +185,10 @@ class Main:
 
 if __name__=="__main__":
 	parser = argparse.ArgumentParser(description="Preprocess transcripts.")
-	parser.add_argument("indir", type=str, help="Directory with the transcripts.")
-	parser.add_argument("outdir", type=str, help="Directory to save processed transcripts.")
+	parser.add_argument("indir", type=str, help="Directory with transcripts.")
+	parser.add_argument("outdir", type=str, help="Directory to save post-processed transcripts.")
 	parser.add_argument("datatype", type=str, help="Transcript type. Expecting one of: SWBD, CH")
-	parser.add_argument("--cont", action="store_true", help="Include all contraction forms.")
-	parser.add_argument("--dash", action="store_true", help="Seperate certain hyphenated words.")
+	parser.add_argument("--cont", action="store_true",
+		help="Include both reduced and expanded contraction forms (default is reduced).")
 	args = parser.parse_args()
 	Main(args)

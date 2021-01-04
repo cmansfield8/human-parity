@@ -1,14 +1,12 @@
 """
 Author: coman8
-Thesis Chapter 6
-Preprocessing code for the MSFT transcriptions.
+Thesis Study 3
+Preprocessing code for the MSFT HUB5 human and ASR transcriptions.
 
-Steps:
-	- map reduced forms in UPDATES and REDUCED
-		- when extra tokens are created, the timestamp is the midpoint between original token_i and token_i+1
-	- lowercase tokens
-	- strip periods in abbreviations
-	- OPTIONALLY seperate hyphenated words that don't start with uh- or um-
+- Expands reduced forms e.g. 'gonna' and 'wanna'
+- For abbreviations, strips periods, adds spaces in between abbreviated letters where possible
+- Seperates hyphenated words
+
 """
 
 import os
@@ -19,12 +17,22 @@ class Main:
 	UPDATES = {"'bout":"about",
 			   "'cause":"because",
 			   "hmm":"hm",
-			   "mhm":"uh-huh",
-			   "till":"until"}
+			   "mhm":"uh-huh"}
 	REDUCED = {"gonna":("going", "to"), 
 			   "wanna":("want", "to"),
 			   "kinda":("kind", "of"),
-			   "sorta":("sort", "of")}
+			   "sorta":("sort", "of"),
+			   "gotta":("got", "to"),
+			   # abbrevs. found in reference
+			   "hp":("h", "p"),
+			   "dj":("d", "j"),
+			   "dc":("d", "c"),
+			   "ll":("l", "l"),
+			   "cre":("c", "r", "e"),
+			   "rpm":("r", "p", "m"),
+			   "phd":("p", "h", "d"),
+			   "twa":("t", "w", "a")}
+			  
 
 	def __init__(self, args):
 		files = os.listdir(args.indir)
@@ -41,17 +49,14 @@ class Main:
 						token = current[4]
 
 						# handle hyphenation
-						if args.dash and "-" in token:
+						if  "-" in token and token != "uh-huh":
 							tokens = token.split("-")
-							if tokens[0] not in {"uh", "um"}:
-								temp = self.get_extension(current,
+							temp = self.get_extension(current,
 															tokens,
 															self.endpoint(lines[i+1]))
-								processed.extend(temp)
-							else:
-								processed.append(current)
+							processed.extend(temp)
 
-						# reduced forms 1
+						# reduced forms which expand to multiple tokens
 						elif token in self.REDUCED:
 							temp = self.get_extension(current, 
 														  	  self.REDUCED[token], 
@@ -72,7 +77,6 @@ class Main:
 					for p in processed:
 						outfile.write(' '.join(p))
 						outfile.write("\n")
-
 
 	def endpoint(self, line):
 		return float(line.split()[2])
@@ -95,14 +99,10 @@ class Main:
 			result.append(temp)
 		return result 
 
-	def write_debug(self, file, num, line, status):
-		print("File {}, Line {}: {} {}".format(file, num, status, line))
-
 
 if __name__=="__main__":
 	parser = argparse.ArgumentParser(description="Preprocess transcripts.")
 	parser.add_argument("indir", type=str, help="Directory with the transcripts in CTM format.")
 	parser.add_argument("outdir", type=str, help="Directory to save new files.")
-	parser.add_argument("--dash", action="store_true", help="Seperate certain hypenated words.")
 	args = parser.parse_args()
 	Main(args)
