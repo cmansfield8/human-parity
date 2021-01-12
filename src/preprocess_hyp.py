@@ -5,7 +5,7 @@ Preprocessing code for the MSFT HUB5 human and ASR transcriptions.
 
 - Expands reduced forms e.g. 'gonna' and 'wanna'
 - For abbreviations, strips periods, adds spaces in between abbreviated letters where possible
-- Seperates hyphenated words
+- Seperates hyphenated words (except for uh-huh)
 
 """
 
@@ -23,7 +23,7 @@ class Main:
 			   "kinda":("kind", "of"),
 			   "sorta":("sort", "of"),
 			   "gotta":("got", "to"),
-			   # abbrevs. found in reference
+			   # abbrevs. to expand
 			   "hp":("h", "p"),
 			   "dj":("d", "j"),
 			   "dc":("d", "c"),

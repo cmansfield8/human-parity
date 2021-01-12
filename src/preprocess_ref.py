@@ -9,9 +9,9 @@ https://mig.nist.gov/MIG_Website/tests/ctr/2000/h5_2000_v1.3.html
 
 - Removes 'comments' about noise, laughter
 - Removes formatting symbols and punctuation
-- Substitutes and groups certain hesitations
-- Expands reduced forms 'gonna' and 'wanna'
-- Remove hyphenation from words
+- Substitutes and optionally groups hesitations
+- Expands reduced forms e.g. 'gonna' and 'wanna'
+- Seperates hyphenated words (except for uh-huh)
 - Fragments have null alternative
 - Options to keep all contraction forms or only single-token forms
 
@@ -61,7 +61,7 @@ class Trans:
 		NOISE = re.compile(r"{[^}]+}")
 		sent = NOISE.sub("", sent)
 
-		# contraction labels
+		# contraction label
 		if args.cont:
 			CONT1 = re.compile(r"<contraction e_form=\"\[[^=]+=>([^\]]+)\]\">(\S+)")
 			sent = CONT1.sub(r"{ \1 / \2 }", sent)
@@ -89,7 +89,7 @@ class Trans:
 			sent = p.sub("", sent)
 
 		# strip punctuation
-		punct_keep = {"-", "\'", "/", "{", "}"}
+		punct_keep = {"-", "\'", "/", "{", "}", "_"}
 		punct_remove = set(string.punctuation)
 		punct_remove.difference_update(punct_keep)
 		sent = "".join(ch for ch in sent if ch not in punct_remove)
@@ -102,22 +102,25 @@ class Trans:
 		sent = self.sub_word(INCOMPLETE, r"{ \2 / @ }", sent) 
 
 		# hesitations
-		sent = self.sub_hesitations(sent)
-		UHHUH = "{ uh-huh / uh huh }"
+		if args.disf:
+			sent = self.sub_hesitations(sent)
+		BACK = "{ uh-huh / uh huh / um-hum / mhm }"
 		# matches MSFT transcript conventions, otherwise WER is extremely high
-		sent = self.sub_word(re.compile(r"uh-huh"), UHHUH, sent)
-		sent = self.sub_word(re.compile(r"um-hum"), UHHUH, sent)
-		# according to NIST guidelines, other variants are absent in MSFT transcript
-		sent = self.sub_word(re.compile(r"mhm"), UHHUH, sent)
+		sent = self.sub_word(re.compile(r"uh-huh"), BACK, sent)
+		sent = self.sub_word(re.compile(r"um-hum"), BACK, sent)
+		# according to NIST guidelines
+		sent = self.sub_word(re.compile(r"mhm"), BACK, sent)
 
 		# dashed words
 		DASHED = re.compile(r"([^uh|\s])-(\S)")  
 		sent = DASHED.sub(r"\1 \2", sent)
 
 		# empty sentences
-		sent = sent.lower()
-		if sent=="":
-			sent = "IGNORE_TIME_SEGMENT_IN_SCORING"
+		empty_sent = "IGNORE_TIME_SEGMENT_IN_SCORING"
+		if sent != empty_sent:
+			sent = sent.lower()
+		if sent == "":
+			sent = empty_sent
 		return sent
 
 	def sub_word(self, pattern, replace, s):
@@ -128,7 +131,7 @@ class Trans:
 		return re.sub(temp, replace, s)
 
 	def sub_hesitations(self, s):
-		hesitations = ["uh", "um", "eh", "hm", "mm", "ah", "huh", "ha", "er", "oof", "hee",
+		hesitations = ["uh", "um", "eh", "hm", "hmm", "mm", "ah", "huh", "ha", "er", "oof", "hee",
 					   "ach", "ee", "ew"]
 		alt = "{ " + " / ".join(hesitations) + " }"
 		# tag hesitations
@@ -190,5 +193,7 @@ if __name__=="__main__":
 	parser.add_argument("datatype", type=str, help="Transcript type. Expecting one of: SWBD, CH")
 	parser.add_argument("--cont", action="store_true",
 		help="Include both reduced and expanded contraction forms (default is reduced).")
+	parser.add_argument("--disf", action="store_true",
+		help="Group disfluencies (e.g. uh, um) into a single hesitations group.")
 	args = parser.parse_args()
 	Main(args)
