@@ -11,7 +11,7 @@ https://mig.nist.gov/MIG_Website/tests/ctr/2000/h5_2000_v1.3.html
 - Removes formatting symbols and punctuation
 - Substitutes and optionally groups hesitations
 - Expands reduced forms e.g. 'gonna' and 'wanna'
-- Seperates hyphenated words (except for uh-huh)
+- Seperates hyphenated words (except for backchannels)
 - Fragments have null alternative
 - Options to keep all contraction forms or only single-token forms
 
@@ -39,6 +39,18 @@ class Trans:
 	begin = None
 	end = None
 	transcript = None
+
+	NORMALIZE = [('daycare', 'day care'), ('all right', 'alright'), 
+				 ('every day', 'everyday'), ('anymore', 'any more'), ('into', 'in to'),
+				 ('boyscouts', 'boy scouts'), ('airflow', 'air flow'),
+				 ('Bentsy', 'Bensi'), ('Lori', 'Laurie'), ('Leigh', 'Lee'),
+				 ('Rachael', 'Rachel'), ('allen', 'alan'), ('eeprom', 'eprom'),
+				 ('Tricia', 'Trisha'), ('Johnny', 'Jonnie'), ('Abby', 'Abbie')]
+	HESITATIONS = ["uh", "um", "eh", "hm", "hmm", "mm", "ah", "huh", 
+				   "ha", "er", "oof", "hee", "ach", "ee", "ew"]
+	BACKCHANNELS = ["uh-huh", "um-hum", "mhm"]
+	TOKENIZE = ['n\'t', '\'s', '\'d', '\'ll', '\'ve', '\'m', '\'re']
+	EMPTY = "IGNORE_TIME_SEGMENT_IN_SCORING"
 
 	def __init__(self, waveid, line, datatype):
 		self.waveform = get_prefix(datatype) + waveid
@@ -101,52 +113,61 @@ class Trans:
 		INCOMPLETE = re.compile(r"(\S+-|-\S+)")
 		sent = self.sub_word(INCOMPLETE, r"{ \2 / @ }", sent) 
 
-		# hesitations
+		# normalize
+		for varients in self.NORMALIZE:
+			for v in varients: 
+				if re.search(v, sent):
+					alt = self.get_alt(varients)
+					sent = self.sub_word(re.compile(v), alt, sent) 
+					break
+
+		# disfluency related normalizations
+		sent = self.sub_word(re.compile(r"hmm"), "hm", sent)
+		sent = self.sub_word(re.compile(r"ooh"), "oh", sent)
+
 		if args.disf:
 			sent = self.sub_hesitations(sent)
-		BACK = "{ uh-huh / uh huh / um-hum / mhm }"
+		BACK = self.get_alt(self.BACKCHANNELS)
+		
 		# matches MSFT transcript conventions, otherwise WER is extremely high
-		sent = self.sub_word(re.compile(r"uh-huh"), BACK, sent)
-		sent = self.sub_word(re.compile(r"um-hum"), BACK, sent)
+		sent = self.sub_word(re.compile(r"uh-huh"), r"%backchannel", sent)
+		sent = self.sub_word(re.compile(r"um-hum"), r"%backchannel", sent)
 		# according to NIST guidelines
-		sent = self.sub_word(re.compile(r"mhm"), BACK, sent)
+		sent = self.sub_word(re.compile(r"mhm"), r"%backchannel", sent)
 
-		# dashed words
-		DASHED = re.compile(r"([^uh|\s])-(\S)")  
+		# hyphenation
+		DASHED = re.compile(r"([^uh|um|\s])-(\S)")  
 		sent = DASHED.sub(r"\1 \2", sent)
 
+		# fix segmentation fault before it happens, you'll thank yourself later
+		YALLVE = re.compile(r"y'{ all have / all've }")
+		sent = YALLVE.sub("{ y'all have / y'all've }", sent)
+
 		# empty sentences
-		empty_sent = "IGNORE_TIME_SEGMENT_IN_SCORING"
-		if sent != empty_sent:
+		if sent != self.EMPTY:
 			sent = sent.lower()
 		if sent == "":
-			sent = empty_sent
+			sent = self.EMPTY
 		return sent
 
 	def sub_word(self, pattern, replace, s):
-		"""Subs a pattern at a word boundary."""
+		"""Subs a pattern within a word boundary."""
 		BOW = re.compile(r"((?<=\s)|(?<=^))")
 		EOW = re.compile(r"((?=\s)|(?<=$))")
 		temp = "".join(x.pattern for x in [BOW, pattern, EOW])
 		return re.sub(temp, replace, s)
 
 	def sub_hesitations(self, s):
-		hesitations = ["uh", "um", "eh", "hm", "hmm", "mm", "ah", "huh", "ha", "er", "oof", "hee",
-					   "ach", "ee", "ew"]
-		alt = "{ " + " / ".join(hesitations) + " }"
+		alt = self.get_alt(self.HESITATIONS)
 		# tag hesitations
-		for h in hesitations:
-			s = self.sub_word(re.compile(h), "HESITATION_FLAG", s)
-		s = self.sub_word(re.compile("HESITATION_FLAG"), alt, s)
+		for h in self.HESITATIONS:
+			s = self.sub_word(re.compile(h), r"%hesitation", s)
+		# s = self.sub_word(re.compile(r"%hesitation"), alt, s)
 		return s
 
 	def normalize_swbd(self, sent):
-		GONNA = re.compile(r"gonna", flags=re.I)
-		GONNA2 = "going to"
-		sent = self.sub_word(GONNA, GONNA2, sent)
-		WANNA = re.compile(r"wanna", flags=re.I)
-		WANNA2 = "want to"
-		sent = self.sub_word(WANNA, WANNA2, sent)
+		sent = self.sub_word(re.compile(r"gonna"), "going to", sent)
+		sent = self.sub_word(re.compile(r"wanna"), "want to", sent)
 		GUESS = re.compile(r"([^\s]+)\[([^\]]+)]")
 		sent = GUESS.sub(r"\1\2", sent)
 		return sent
@@ -155,6 +176,9 @@ class Trans:
 		FOREIGN = re.compile(r"<[\S+]+\s([^>|=]+)>")
 		FOREIGN.sub(r"\1", sent)
 		return sent
+
+	def get_alt(self, l):
+		return "{ " + " / ".join(l) + " }"
 
 	def toString(self):
 		result = [self.waveform, self.channel, self.speaker, self.begin, self.end, self.transcript]
