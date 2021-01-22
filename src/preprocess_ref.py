@@ -2,7 +2,7 @@
 Author: coman8@uw.edu
 Thesis Study 3
 
-Preprocessing code for the NIST HUB5 reference transcripts prior to SCLITE scoring.
+Preprocessing code for the NIST HUB5 reference transcripts prior to SCLITE.
 
 The preprocessing closely follows the initial NIST HUB5 guidelines:
 https://mig.nist.gov/MIG_Website/tests/ctr/2000/h5_2000_v1.3.html
@@ -24,9 +24,9 @@ import re
 
 
 def get_prefix(datatype):
-	if datatype=="SWBD":
+	if datatype == "SWBD":
 		return "sw_"
-	elif datatype=="CH":
+	elif datatype == "CH":
 		return "en_"
 	else:
 		return None
@@ -40,16 +40,16 @@ class Trans:
 	end = None
 	transcript = None
 
-	NORMALIZE = [('daycare', 'day care'), ('all right', 'alright'), 
+	NORMALIZE = [('daycare', 'day care'), ('all right', 'alright'),
 				 ('every day', 'everyday'), ('anymore', 'any more'), ('into', 'in to'),
 				 ('boyscouts', 'boy scouts'), ('airflow', 'air flow'),
 				 ('Bentsy', 'Bensi'), ('Lori', 'Laurie'), ('Leigh', 'Lee'),
-				 ('Rachael', 'Rachel'), ('allen', 'alan'), ('eeprom', 'eprom'),
+				 ('Rachael', 'Rachel'), ('allen', 'alan'),
 				 ('Tricia', 'Trisha'), ('Johnny', 'Jonnie'), ('Abby', 'Abbie')]
-	HESITATIONS = ["uh", "um", "eh", "hm", "hmm", "mm", "ah", "huh", 
+	HESITATIONS = ["uh", "um", "eh", "hm", "hmm", "mm", "ah", "huh",
 				   "ha", "er", "oof", "hee", "ach", "ee", "ew"]
+	FRAGMENT_HESITATIONS = ["uh-", "u-", "a-", "e-"]
 	BACKCHANNELS = ["uh-huh", "um-hum", "mhm"]
-	TOKENIZE = ['n\'t', '\'s', '\'d', '\'ll', '\'ve', '\'m', '\'re']
 	EMPTY = "IGNORE_TIME_SEGMENT_IN_SCORING"
 
 	def __init__(self, waveid, line, datatype):
@@ -62,7 +62,7 @@ class Trans:
 			if self.channel == "B1":
 				self.channel = "B"
 			self.transcript = ' '.join(l[3:])
-		except IndexError as e:
+		except IndexError:
 			raise("Corrupt line at file {}: {}".format(self.waveform, line))
 		self.speaker = self.waveform + "_" + self.channel
 		self.transcript = self.process_str(self.transcript, datatype)
@@ -88,13 +88,13 @@ class Trans:
 		if datatype == "SWBD":
 			sent = self.normalize_swbd(sent)
 		else:
-			sent = self.normalize_en(sent) 
+			sent = self.normalize_en(sent)
 
 		# various special labels
 		COMMENT = re.compile(r"\[[^\]]+\]+")  # comment (warning: will match contractions)
 		TAG = re.compile(r"<[^>]+>")  # aside (warning: will match contractions)
 		DDASH = re.compile(r"//")  # aside
-		INTERRUPT = re.compile(r"--") # interruption markers 
+		INTERRUPT = re.compile(r"--")  # interruption markers
 
 		patterns = [COMMENT, TAG, DDASH, INTERRUPT]
 		for p in patterns:
@@ -107,18 +107,18 @@ class Trans:
 		sent = "".join(ch for ch in sent if ch not in punct_remove)
 
 		sent = sent.strip()  # leading and trailing whitespace
-		sent = re.sub(r"\s+", " ", sent) # remove double spaces
+		sent = re.sub(r"\s+", " ", sent)  # remove double spaces
 
 		# fragments
 		INCOMPLETE = re.compile(r"(\S+-|-\S+)")
-		sent = self.sub_word(INCOMPLETE, r"{ \2 / @ }", sent) 
+		sent = self.sub_word(INCOMPLETE, r"{ \2 / @ }", sent)
 
 		# normalize
 		for varients in self.NORMALIZE:
-			for v in varients: 
+			for v in varients:
 				if re.search(v, sent):
 					alt = self.get_alt(varients)
-					sent = self.sub_word(re.compile(v), alt, sent) 
+					sent = self.sub_word(re.compile(v), alt, sent)
 					break
 
 		# disfluency related normalizations
@@ -127,8 +127,7 @@ class Trans:
 
 		if args.disf:
 			sent = self.sub_hesitations(sent)
-		BACK = self.get_alt(self.BACKCHANNELS)
-		
+
 		# matches MSFT transcript conventions, otherwise WER is extremely high
 		sent = self.sub_word(re.compile(r"uh-huh"), r"%backchannel", sent)
 		sent = self.sub_word(re.compile(r"um-hum"), r"%backchannel", sent)
@@ -136,12 +135,12 @@ class Trans:
 		sent = self.sub_word(re.compile(r"mhm"), r"%backchannel", sent)
 
 		# hyphenation
-		DASHED = re.compile(r"([^uh|um|\s])-(\S)")  
+		DASHED = re.compile(r"([^uh|um|\s])-(\S)")
 		sent = DASHED.sub(r"\1 \2", sent)
 
 		# fix segmentation fault before it happens, you'll thank yourself later
 		YALLVE = re.compile(r"y'{ all have / all've }")
-		sent = YALLVE.sub("{ y'all have / y'all've }", sent)
+		sent = YALLVE.sub("{ you all have / y'all have / y'all've }", sent)
 
 		# empty sentences
 		if sent != self.EMPTY:
@@ -158,11 +157,12 @@ class Trans:
 		return re.sub(temp, replace, s)
 
 	def sub_hesitations(self, s):
-		alt = self.get_alt(self.HESITATIONS)
 		# tag hesitations
 		for h in self.HESITATIONS:
 			s = self.sub_word(re.compile(h), r"%hesitation", s)
-		# s = self.sub_word(re.compile(r"%hesitation"), alt, s)
+		for fh in self.FRAGMENT_HESITATIONS:
+			FRAGH = re.compile(r"({})".format(fh))
+			s = self.sub_word(FRAGH, r"\2 / %hesitation", s)
 		return s
 
 	def normalize_swbd(self, sent):
@@ -181,7 +181,8 @@ class Trans:
 		return "{ " + " / ".join(l) + " }"
 
 	def toString(self):
-		result = [self.waveform, self.channel, self.speaker, self.begin, self.end, self.transcript]
+		result = [self.waveform, self.channel, self.speaker, self.begin,
+				  self.end, self.transcript]
 		return "\t".join(str(x) for x in result)
 
 
@@ -189,7 +190,7 @@ class Main:
 
 	def __init__(self, args):
 		processed = list()
-		DIGIT=re.compile(r"\d")
+		DIGIT = re.compile(r"\d")
 
 		files = os.listdir(args.indir)
 		for file in files:
@@ -210,14 +211,14 @@ class Main:
 				outfile.write("\n")
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="Preprocess transcripts.")
 	parser.add_argument("indir", type=str, help="Directory with transcripts.")
 	parser.add_argument("outdir", type=str, help="Directory to save post-processed transcripts.")
 	parser.add_argument("datatype", type=str, help="Transcript type. Expecting one of: SWBD, CH")
 	parser.add_argument("--cont", action="store_true",
-		help="Include both reduced and expanded contraction forms (default is reduced).")
+						help="Include both reduced and expanded contraction forms (default is reduced).")
 	parser.add_argument("--disf", action="store_true",
-		help="Group disfluencies (e.g. uh, um) into a single hesitations group.")
+						help="Group disfluencies (e.g. uh, um) into a single hesitations group.")
 	args = parser.parse_args()
 	Main(args)
