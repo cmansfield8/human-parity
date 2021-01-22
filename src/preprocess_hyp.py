@@ -76,6 +76,7 @@ class Main:
 							if token in self.BACKCHANNELS:
 								current[4] = "%backchannel"
 							if self.match_split_backchannel(token, lines, i):
+								token = 'uh-huh'
 								current[4] = "%backchannel"
 								i += 1  # the backchannel is uh \n huh, we remove the second line
 							if args.disf and token in self.HESITATIONS:
@@ -97,7 +98,8 @@ class Main:
 			return False
 		if i+1 > len(line)-1:
 			return False
-		if line[i+1][4] == "huh":
+		next_line = line[i+1].split()[4]
+		if next_line.lower() == "huh":
 			return True
 		return False
 
