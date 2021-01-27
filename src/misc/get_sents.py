@@ -31,7 +31,9 @@ class Main:
 		result = series.apply(lambda x: literal_eval(x))
 		result =  result.tolist()
 		for i in range(len(result)):
-			result[i] = [x for x in result[i] if x != ""]
+			result[i] = [x for x in result[i] if x]
+			if not result[i]:
+				result[i].append('%empty_sent')
 		result = [' '.join(x) for x in result]
 		
 		with open(outfile, 'w+') as out:
