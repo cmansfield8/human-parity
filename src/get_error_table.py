@@ -8,12 +8,10 @@ Given the csv of model infos, generates a csv of error info only.
 """
 
 import argparse
-import sys
 import os
-import csv
-import re
 from ast import literal_eval
 import pandas as pd
+import util
 
 
 class SError:
@@ -48,7 +46,7 @@ class TError:
 
     @staticmethod
     def get_columns():
-        c = ['ix', 'annotation', 'position', 'sen_len', 'ref', 'hyp']
+        c = ['ix', 'annotation', 'position', 'sen_len']
         c.extend(SError.get_columns('hyp'))
         c.extend(SError.get_columns('ref'))
         return c
@@ -60,53 +58,20 @@ class TError:
         return [str(x) for x in d]
 
 
-class Counter:
-
-    def __init__(self):
-        self.ix = 0
-        self.hyp = 0
-        self.ref = 0
-        self.hyp_cont = 0
-        self.ref_cont = 0
-
-    def iterall(self, atype):
-        self.ix += 1
-        if atype != 'D':
-            self.hyp += 1
-            self.hyp_cont += 1
-        if atype != 'I':
-            self.ref += 1
-            self.ref_cont += 1
-
-    def iter(self, source=None):
-        if source == "ref_cont":
-            self.ref_cont += 1
-        elif source == "hyp_cont":
-            self.hyp_cont += 1
-
-
 class Main:
     ERRORS = ['I', 'D', 'S']
 
     def __init__(self, projdir):
         for file in os.listdir(projdir):
             if file.endswith('.all'):
-                # load file
-                infile = os.path.join(projdir, file)
-                print('Loading {}'.format(infile))
-                df = pd.read_csv(infile, index_col=0)
+                df = util.load_file(projdir, file)
 
                 errors = self.get_errors(df)
 
                 # write file
                 output = file[:-4] + '_errors.csv'
-                output = os.path.join(projdir, output)
-                print('Writing to {}'.format(output))
-                with open(output, 'w', encoding='utf-8') as out:
-                    writer = csv.writer(out, lineterminator='\n')
-                    writer.writerow(TError.get_columns())
-                    for e in errors:
-                        writer.writerow(e.get_data())
+                util.write_file(errors, projdir, output,
+                                cols=TError.get_columns())
 
     def get_errors(self, df):
         # read columns as list
@@ -125,30 +90,21 @@ class Main:
 
     def extract_errors(self, ix, row):
         errors = list()
-        i = Counter()
+        i = util.Counter()
         ann = row['annotation']
 
         for j in range(len(ann)):
             try:
                 atype = ann[j]
             except IndexError:
-                self.catch_index_error(ann, j)
+                util.catch_index_error(ann, j)
                 raise
 
             # since TAG has tokenized contractions, skip those
-            try:
-                if atype != 'D' and row['hyp_cont_tag_gloss'][i.hyp_cont] == 1:
-                    i.iter('hyp_cont')
-                if atype != 'I' and row['ref_cont_tag_gloss'][i.ref_cont] == 1:
-                    i.iter('ref_cont')
-            except IndexError:
-                self.catch_index_error(row, vars(i))
-                raise
+            i.itercont(row, atype)
 
             if atype in self.ERRORS:
-                ix_name = re.sub(r"\((.+)\)", r"\1", ix)
-                ix_name = ix_name + "#" + str(j)
-                e = TError(ix_name)
+                e = TError(util.ix_name(ix, j))
 
                 # source-specific information
                 e.annotation = atype
@@ -181,14 +137,8 @@ class Main:
             se.prob = row[label + '_prob'][count]
             se.cprob = row[label + '_cprob'][count]
         except IndexError:
-            self.catch_index_error(row, vars(i))
+            util.catch_index_error(row, vars(i))
         return se
-
-    def catch_index_error(*args):
-        print('IndexError')
-        for a in args:
-            print(a)
-        print(sys.exc_info()[0])
 
 
 if __name__ == "__main__":
